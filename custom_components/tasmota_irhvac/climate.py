@@ -92,6 +92,8 @@ from .const import (
     HVAC_MODE_DRY,
     HVAC_MODE_FAN_ONLY,
     HVAC_MODES,
+    FAN_MODES,
+    SWING_MODES,
     CONF_UNIQUE_ID,
     CONF_EXCLUSIVE_GROUP_VENDOR,
     CONF_VENDOR,
@@ -190,46 +192,22 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): vol.Coerce(float),
         vol.Optional(CONF_MIN_TEMP, default=DEFAULT_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_TARGET_TEMP, default=DEFAULT_TARGET_TEMP): vol.Coerce(float),
-        vol.Optional(
-            CONF_INITIAL_OPERATION_MODE, default=DEFAULT_INITIAL_OPERATION_MODE
-        ): vol.In(
+        vol.Optional(CONF_INITIAL_OPERATION_MODE, default=DEFAULT_INITIAL_OPERATION_MODE): vol.In(
             [STATE_HEAT, STATE_COOL, STATE_AUTO,
-                STATE_DRY, STATE_FAN_ONLY, STATE_OFF]
+            STATE_DRY, STATE_FAN_ONLY, STATE_OFF]
         ),
         vol.Optional(CONF_AWAY_TEMP, default=DEFAULT_AWAY_TEMP): vol.Coerce(float),
         vol.Optional(CONF_PRECISION, default=DEFAULT_PRECISION): vol.In(
             [PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]
         ),
-        vol.Optional(CONF_MODES_LIST, default=DEFAULT_MODES_LIST): vol.All(
+        vol.Optional(CONF_MODE_LIST, default=DEFAULT_MODE_LIST): vol.All(
             cv.ensure_list, [vol.In(HVAC_MODES)]
         ),
         vol.Optional(CONF_FAN_LIST, default=DEFAULT_FAN_LIST): vol.All(
-            cv.ensure_list,
-            [
-                vol.In(
-                    [
-                        FAN_ON,
-                        FAN_OFF,
-                        FAN_AUTO,
-                        FAN_LOW,
-                        FAN_MEDIUM,
-                        FAN_HIGH,
-                        FAN_MIDDLE,
-                        FAN_FOCUS,
-                        FAN_DIFFUSE,
-                        HVAC_FAN_MIN,
-                        HVAC_FAN_MEDIUM,
-                        HVAC_FAN_MAX,
-                        HVAC_FAN_AUTO,
-                        HVAC_FAN_MAX_HIGH,
-                        HVAC_FAN_AUTO_MAX,
-                    ]
-                )
-            ],
+            cv.ensure_list, [vol.In(FAN_MODES)]
         ),
         vol.Optional(CONF_SWING_LIST, default=DEFAULT_SWING_LIST): vol.All(
-            cv.ensure_list,
-            [vol.In([SWING_OFF, SWING_BOTH, SWING_VERTICAL, SWING_HORIZONTAL])],
+            cv.ensure_list, [vol.In(SWING_MODES)]
         ),
         vol.Optional(CONF_QUIET, default=DEFAULT_CONF_QUIET): cv.string,
         vol.Optional(CONF_TURBO, default=DEFAULT_CONF_TURBO): cv.string,
