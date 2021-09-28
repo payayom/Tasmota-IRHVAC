@@ -381,6 +381,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 class TasmotaIrhvac(ClimateEntity, RestoreEntity):
     """Representation of a Generic Thermostat device."""
+    
     if DATA_KEY not in hass.data:
         hass.data[DATA_KEY] = {}
     
@@ -482,7 +483,7 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
         else:
             # No previous state, try and restore defaults
             if self._target_temp is None:
-                self._target_temp = 26.0
+                self._target_temp = DEFAULT_TARGET_TEMP
             _LOGGER.warning(
                 "No previously saved temperature, setting to %s", self._target_temp
             )
@@ -638,13 +639,6 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
         return self._unique_id
 
     @property
-    def precision(self):
-        """Return the precision of the system."""
-        if self._temp_precision is not None:
-            return self._temp_precision
-        return super().precision
-
-    @property
     def target_temperature_step(self):
         """Return the supported step of target temperature."""
         return self._temp_precision
@@ -657,8 +651,13 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
     @property
     def current_temperature(self):
         """Return the sensor temperature."""
-        return self._cur_temp
+        return self._current_temperature
 
+    @property
+    def current_humidity(self):
+        """Return the sensor humidity."""
+        return self._current_humidity
+    
     @property
     def hvac_mode(self):
         """Return current operation."""
@@ -780,7 +779,7 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
         """Set new target fan mode."""
         if fan_mode not in self._fan_list:
             _LOGGER.error(
-                "Invalid swing mode selected. Got '%s'. Allowed modes are:", fan_mode
+                "Invalid fan mode selected. Got '%s'. Allowed modes are:", fan_mode
             )
             _LOGGER.error(self._fan_list)
             return
@@ -884,22 +883,38 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
         # Get default temp from super class
         return super().max_temp
 
-    async def _async_sensor_changed(self, entity_id, old_state, new_state):
+    async def _async_temperature_sensor_changed(self, entity_id, old_state, new_state):
         """Handle temperature changes."""
         if new_state is None:
             return
 
-        self._async_update_temp(new_state)
+        self._async_update_temperature(new_state)
         await self.async_update_ha_state()
 
     @callback
-    def _async_update_temp(self, state):
+    def _async_update_temperature(self, state):
         """Update thermostat with latest state from sensor."""
         try:
-            self._cur_temp = float(state.state)
+            self._current_temperature = float(state.state)
         except ValueError as ex:
             _LOGGER.debug("Unable to update from sensor: %s", ex)
 
+    async def _async_humidity_sensor_changed(self, entity_id, old_state, new_state):
+        """Handle humidity changes."""
+        if new_state is None:
+            return
+
+        self._async_update_humidity(new_state)
+        await self.async_update_ha_state()
+
+    @callback
+    def _async_update_humidity(self, state):
+        """Update thermostat with latest state from sensor."""
+        try:
+            self._current_humidity = float(state.state)
+        except ValueError as ex:
+            _LOGGER.debug("Unable to update from sensor: %s", ex)
+            
     @property
     def _is_device_active(self):
         """If the toggleable device is currently active."""
