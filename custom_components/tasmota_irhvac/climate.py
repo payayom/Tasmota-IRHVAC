@@ -99,13 +99,16 @@ from .const import (
     CONF_COMMAND_TOPIC,
     CONF_STATE_TOPIC,
     CONF_TEMP_SENSOR,
+    CONF_HUM_SENSOR,
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
     CONF_TARGET_TEMP,
     CONF_INITIAL_OPERATION_MODE,
+    CONF_INITIAL_FAN_MODE,
+    CONF_INITIAL_SWING_MODE,
     CONF_AWAY_TEMP,
     CONF_PRECISION,
-    CONF_MODES_LIST,
+    CONF_MODE_LIST,
     CONF_FAN_LIST,
     CONF_SWING_LIST,
     CONF_QUIET,
@@ -179,10 +182,11 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required(
             CONF_COMMAND_TOPIC, default=DEFAULT_COMMAND_TOPIC
         ): mqtt.valid_publish_topic,
-        vol.Required(CONF_TEMP_SENSOR): cv.entity_id,
         vol.Optional(
             CONF_STATE_TOPIC, default=DEFAULT_STATE_TOPIC
         ): mqtt.valid_subscribe_topic,
+        vol.Optional(CONF_TEMP_SENSOR): cv.entity_id,
+        vol.Optional(CONF_HUM_SENSOR): cv.entity_id,
         vol.Optional(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): vol.Coerce(float),
         vol.Optional(CONF_MIN_TEMP, default=DEFAULT_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_TARGET_TEMP, default=DEFAULT_TARGET_TEMP): vol.Coerce(float),
@@ -306,43 +310,6 @@ SERVICE_TO_METHOD = {
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the generic thermostat platform."""
-    name = config.get(CONF_NAME)
-    unique_id = config.get(CONF_UNIQUE_ID)
-    topic = config.get(CONF_COMMAND_TOPIC)
-    vendor = config.get(CONF_VENDOR)
-    protocol = config.get(CONF_PROTOCOL)
-    sensor_entity_id = config.get(CONF_TEMP_SENSOR)
-    state_topic = config[CONF_STATE_TOPIC]
-    min_temp = config[CONF_MIN_TEMP]
-    max_temp = config[CONF_MAX_TEMP]
-    target_temp = config[CONF_TARGET_TEMP]
-    initial_operation_mode = config[CONF_INITIAL_OPERATION_MODE]
-    away_temp = config[CONF_AWAY_TEMP]
-    precision = config[CONF_PRECISION]
-    modes_list = config[CONF_MODES_LIST]
-    fan_list = config[CONF_FAN_LIST]
-    swing_list = config[CONF_SWING_LIST]
-    quiet = config[CONF_QUIET]
-    turbo = config[CONF_TURBO]
-    econo = config[CONF_ECONO]
-    model = config[CONF_MODEL]
-    celsius = config[CONF_CELSIUS]
-    light = config[CONF_LIGHT]
-    filters = config[CONF_FILTER]
-    clean = config[CONF_CLEAN]
-    beep = config[CONF_BEEP]
-    sleep = config[CONF_SLEEP]
-
-    if DATA_KEY not in hass.data:
-        hass.data[DATA_KEY] = {}
-
-    if vendor is None:
-        if protocol is None:
-            _LOGGER.error(
-                'Neither vendor nor protocol provided for "%s"!', name)
-            return
-
-        vendor = protocol
 
     tasmotaIrhvac = TasmotaIrhvac(
         hass,
@@ -375,7 +342,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     uuidstr = uuid.uuid4().hex
     hass.data[DATA_KEY][uuidstr] = tasmotaIrhvac
 
-    async_add_entities([tasmotaIrhvac])
+    async_add_entities([tasmotaIrhvac(hass, config)])
 
     async def async_service_handler(service):
         """Map services to methods on TasmotaIrhvac."""
@@ -414,103 +381,88 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 class TasmotaIrhvac(ClimateEntity, RestoreEntity):
     """Representation of a Generic Thermostat device."""
-
-    def __init__(
-        self,
-        hass,
-        topic,
-        vendor,
-        name,
-        unique_id,
-        sensor_entity_id,
-        state_topic,
-        min_temp,
-        max_temp,
-        target_temp,
-        initial_operation_mode,
-        away_temp,
-        precision,
-        modes_list,
-        fan_list,
-        swing_list,
-        quiet,
-        turbo,
-        econo,
-        model,
-        celsius,
-        light,
-        filters,
-        clean,
-        beep,
-        sleep,
-    ):
+    if DATA_KEY not in hass.data:
+        hass.data[DATA_KEY] = {}
+    
+    def __init__(self, hass, config):
         """Initialize the thermostat."""
-        self.topic = topic
         self.hass = hass
-        self._vendor = vendor
-        self._name = name
-        self._unique_id = unique_id
-        self.sensor_entity_id = sensor_entity_id
-        self.state_topic = state_topic
-        self._hvac_mode = initial_operation_mode
-        self._saved_target_temp = target_temp or away_temp
-        self._temp_precision = precision
-        self._hvac_list = modes_list
-        self._fan_list = fan_list
-        self._fan_mode = fan_list[0]
-        self._swing_list = swing_list
-        self._swing_mode = swing_list[0]
+        self._name = config.get(CONF_NAME)
+        self._unique_id = config.get(CONF_UNIQUE_ID)
+        self._topic = config.get(CONF_COMMAND_TOPIC)
+        self._state_topic = config[CONF_STATE_TOPIC]
+        self._vendor = config.get(CONF_VENDOR)
+        self._protocol = config.get(CONF_PROTOCOL)
+        self._temperature_sensor = config.get(CONF_TEMP_SENSOR)
+        self._current_temperature = None
+        self._humidity_sensor = config.get(CONF_HUM_SENSOR)
+        self._current_humidity = None
+        self._min_temp = config[CONF_MIN_TEMP]
+        self._max_temp = config[CONF_MAX_TEMP]
+        self._target_temp = config[CONF_TARGET_TEMP]
+        self._away_temp = config[CONF_AWAY_TEMP]
+        self._saved_target_temp = self._target_temp or self.away_temp
+        self._temp_precision = config[CONF_PRECISION]
+        self._hvac_list = config[CONF_MODE_LIST]
+        self._hvac_mode = config[CONF_INITIAL_HVAC_MODE]
+        self._fan_list = config[CONF_FAN_LIST]
+        self._fan_mode = config[CONF_INITIAL_FAN_MODE]
+        self._swing_list = config[CONF_SWING_LIST]
+        self._swing_mode = config[CONF_INITIAL_SWING_MODE]
+        self._unit = hass.config.units.temperature_unit
+        if self._away_temp is not None:
+            self._support_flags = SUPPORT_FLAGS | SUPPORT_PRESET_MODE
+        self._quiet = config[CONF_QUIET]
+        self._turbo = config[CONF_TURBO]
+        self._econo = config[CONF_ECONO]
+        self._model = config[CONF_MODEL]
+        self._celsius = config[CONF_CELSIUS]
+        self._light = config[CONF_LIGHT]
+        self._filters = config[CONF_FILTER]
+        self._clean = config[CONF_CLEAN]
+        self._beep = config[CONF_BEEP]
+        self._sleep = config[CONF_SLEEP]
+        self._is_away = False
         self._enabled = False
         self.power_mode = STATE_OFF
-        if initial_operation_mode is not STATE_OFF:
+        if self._initial_hvac_mode is not STATE_OFF:
             self.power_mode = STATE_ON
             self._enabled = True
         self._active = False
-        self._cur_temp = None
-        self._min_temp = min_temp
-        self._max_temp = max_temp
-        self._target_temp = target_temp
-        self._unit = hass.config.units.temperature_unit
-        self._support_flags = SUPPORT_FLAGS
-        if away_temp is not None:
-            self._support_flags = SUPPORT_FLAGS | SUPPORT_PRESET_MODE
-        self._away_temp = away_temp
-        self._is_away = False
-        self._modes_list = modes_list
-        self._fan_list = fan_list
-        self._swing_list = swing_list
-        self._quiet = quiet.lower()
-        self._turbo = turbo.lower()
-        self._econo = econo.lower()
-        self._model = model
-        self._celsius = celsius
-        self._light = light.lower()
-        self._filters = filters.lower()
-        self._clean = clean.lower()
-        self._beep = beep.lower()
-        self._sleep = sleep.lower()
         self._sub_state = None
         self._state_attrs = {}
         self._state_attrs.update(
-            {attribute: getattr(self, '_' + attribute)
-             for attribute in ATTRIBUTES_IRHVAC}
+            {attribute: getattr(self, '_' + attribute) for attribute in ATTRIBUTES_IRHVAC}
         )
-
+        
+        if self._vendor is None:
+            if self._protocol is None:
+                _LOGGER.error(
+                    'Neither vendor nor protocol provided for "%s"!', self._name)
+                return
+            self._vendor = self._protocol
+              
     async def async_added_to_hass(self):
         """Run when entity about to be added."""
         await super().async_added_to_hass()
         # Add listener
-        async_track_state_change(
-            self.hass, self.sensor_entity_id, self._async_sensor_changed
-        )
-        await self._subscribe_topics()
-
-        @callback
-        def _async_startup(event):
-            """Init on startup."""
-            sensor_state = self.hass.states.get(self.sensor_entity_id)
+        if self._temperature_sensor is not None:
+            async_track_state_change(
+                self.hass, self._temperature_sensor, self._async_temperature_sensor_changed
+            )
+            sensor_state = self.hass.states.get(self._temperature_sensor)
             if sensor_state and sensor_state.state != STATE_UNKNOWN:
-                self._async_update_temp(sensor_state)
+                self._async_update_temperature(sensor_state)
+
+        if self._humidity_sensor is not None:
+            async_track_state_change(
+                self.hass, self._humidity_sensor, self._async_humidity_sensor_changed
+            )
+            sensor_state = self.hass.states.get(self._humidity_sensor)
+            if sensor_state and sensor_state.state != STATE_UNKNOWN:
+                self._async_update_humidity(sensor_state)
+        
+        await self._subscribe_topics()
 
         self.hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_START, _async_startup)
