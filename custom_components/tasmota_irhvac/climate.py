@@ -617,20 +617,35 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
         return self._unique_id
 
     @property
-    def target_temperature_step(self):
-        """Return the supported step of target temperature."""
-        return self._temp_precision
-
-    @property
     def temperature_unit(self):
         """Return the unit of measurement."""
         return self._unit
 
     @property
+    def target_temperature_step(self):
+        """Return the supported step of target temperature."""
+        return self._temp_precision
+
+    @property
+    def min_temp(self):
+        """Return the minimum temperature."""
+        return self._min_temp
+
+    @property
+    def max_temp(self):
+        """Return the maximum temperature."""
+        return self._max_temp
+    
+    @property
+    def target_temperature(self):
+        """Return the temperature we try to reach."""
+        return self._target_temperature
+    
+    @property
     def current_temperature(self):
         """Return the sensor temperature."""
         return self._current_temperature
-
+    
     @property
     def current_humidity(self):
         """Return the sensor humidity."""
@@ -641,6 +656,11 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
         """Return current operation."""
         return self._hvac_mode
 
+    @property
+    def last_on_mode(self):
+        """Return the last on mode ie. heat, cool, dry, auto."""
+        return self._last_on_mode
+    
     @property
     def hvac_action(self):
         """Return the current running hvac operation if supported.
@@ -655,16 +675,13 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
             return CURRENT_HVAC_DRY
         elif self._hvac_mode == HVAC_MODE_FAN_ONLY:
             return CURRENT_HVAC_FAN
+        elif self._hvac_mode == HVAC_MODE_AUTO:
+            return CURRENT_HVAC_AUTO
         return self._hvac_mode
 
     @property
-    def target_temperature(self):
-        """Return the temperature we try to reach."""
-        return self._target_temp
-
-    @property
     def hvac_modes(self):
-        """List of available operation modes."""
+        """Return the list of available operation modes."""
         return self._hvac_list
 
     @property
@@ -679,47 +696,36 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
 
     @property
     def fan_mode(self):
-        """Return the list of available fan modes.
-
-        Requires SUPPORT_FAN_MODE.
-        """
+        """Return the fan setting."""
         return self._fan_mode
 
     @property
     def fan_modes(self):
-        """Return the list of available fan modes.
-
-        Requires SUPPORT_FAN_MODE.
-        """
-        # tweek for some ELECTRA_AC devices
-        if HVAC_FAN_MAX_HIGH in self._fan_list and HVAC_FAN_AUTO_MAX in self._fan_list:
-            new_fan_list = []
-            for val in self._fan_list:
-                if val == HVAC_FAN_MAX_HIGH:
-                    new_fan_list.append(FAN_HIGH)
-                elif val == HVAC_FAN_AUTO_MAX:
-                    new_fan_list.append(HVAC_FAN_MAX)
-                else:
-                    new_fan_list.append(val)
-            return new_fan_list
+        """Return the list of available fan modes."""
         return self._fan_list
 
     @property
     def swing_mode(self):
-        """Return the swing setting.
-
-        Requires SUPPORT_SWING_MODE.
-        """
+        """Return the swing setting."""
         return self._swing_mode
 
     @property
     def swing_modes(self):
-        """Return the list of available swing modes.
-
-        Requires SUPPORT_SWING_MODE.
-        """
+        """Return the list of available swing modes."""
         return self._swing_list
 
+    @property
+    def _is_device_active(self):
+        """If the toggleable device is currently active."""
+        return self.power_mode == STATE_ON
+
+    @property
+    def supported_features(self):
+        """Return the list of supported features."""
+        return self._support_flags
+
+    # main commands that correspond to standard service calls
+    
     async def async_set_hvac_mode(self, hvac_mode):
         """Set hvac mode."""
         if hvac_mode not in self._hvac_list or hvac_mode == HVAC_MODE_OFF:
@@ -728,6 +734,7 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
             self.power_mode = STATE_OFF
         else:
             self._hvac_mode = hvac_mode
+            self._last_on_mode = hvac_mode
             self._enabled = True
             self.power_mode = STATE_ON
         # Ensure we update the current operation after changing the mode
@@ -735,21 +742,29 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
 
     async def async_turn_on(self):
         """Turn thermostat on."""
-        self.power_mode = STATE_ON
-        await self.async_send_cmd(False)
-
+        if self._last_on_mode is not None: # if last mode is defined, set to it to turn on (assuming the thermostat is currently off
+            await self.async_set_hvac_mode(self, self._last_on_mode)
+        else: # if not, set to default hvac mode
+            await self.async_set_hvac_mode(self, DEFAULT_HVAC_MODE) 
+ 
     async def async_turn_off(self):
         """Turn thermostat off."""
-        self._hvac_mode = STATE_OFF
-        self.power_mode = STATE_OFF
-        await self.async_send_cmd(False)
+        await self.async_set_hvac_mode(self, HVAC_MODE_OFF)
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
-        self._target_temp = temperature
+        if temperature < self._min_temp or temperature > self._max_temp:
+            _LOGGER.warning('The temperature value is out of range')
+            return
+        if self._precision == PRECISION_WHOLE:
+            self._target_temp = round(temperature)
+        elif self._precision == PRECISION_HALF:
+            self._target_temp = round(temperature * 2) / 2
+        else: # default to 1 decimal place
+            self._target_temp = round(temperature, 1)
         self.power_mode = STATE_ON
         await self.async_send_cmd(False)
 
@@ -762,8 +777,8 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
             _LOGGER.error(self._fan_list)
             return
         self._fan_mode = fan_mode
-        self.power_mode = STATE_ON
-        await self.async_send_cmd(False)
+        if not self._hvac_mode.lower() == HVAC_MODE_OFF:
+            await self.async_send_cmd(True)
 
     async def async_set_swing_mode(self, swing_mode):
         """Set new target swing operation."""
@@ -774,62 +789,46 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
             _LOGGER.error(self._swing_list)
             return
         self._swing_mode = swing_mode
-        self.power_mode = STATE_ON
-        await self.async_send_cmd(False)
+        if not self._hvac_mode.lower() == HVAC_MODE_OFF:
+            await self.async_send_cmd(True)
 
     async def async_set_econo(self, econo):
         """Set new target econo mode."""
         if econo not in ON_OFF_LIST:
             return
         self._econo = econo.lower()
-        await self.async_send_cmd(True)
+        if not self._hvac_mode.lower() == HVAC_MODE_OFF:
+            await self.async_send_cmd(True)
 
     async def async_set_turbo(self, turbo):
         """Set new target turbo mode."""
         if turbo not in ON_OFF_LIST:
             return
         self._turbo = turbo.lower()
-        await self.async_send_cmd(True)
+        if not self._hvac_mode.lower() == HVAC_MODE_OFF:
+            await self.async_send_cmd(True)
 
     async def async_set_quiet(self, quiet):
         """Set new target quiet mode."""
         if quiet not in ON_OFF_LIST:
             return
         self._quiet = quiet.lower()
-        await self.async_send_cmd(True)
-
-    async def async_set_light(self, light):
-        """Set new target light mode."""
-        if light not in ON_OFF_LIST:
-            return
-        self._light = light.lower()
-        await self.async_send_cmd(True)
-
-    async def async_set_filters(self, filters):
-        """Set new target filters mode."""
-        if filters not in ON_OFF_LIST:
-            return
-        self._filters = filters.lower()
-        await self.async_send_cmd(True)
+        if not self._hvac_mode.lower() == HVAC_MODE_OFF:
+            await self.async_send_cmd(True)
 
     async def async_set_clean(self, clean):
         """Set new target clean mode."""
         if clean not in ON_OFF_LIST:
             return
         self._clean = clean.lower()
-        await self.async_send_cmd(True)
-
-    async def async_set_beep(self, beep):
-        """Set new target beep mode."""
-        if beep not in ON_OFF_LIST:
-            return
-        self._beep = beep.lower()
-        await self.async_send_cmd(True)
+        if not self._hvac_mode.lower() == HVAC_MODE_OFF:
+            await self.async_send_cmd(True)
 
     async def async_set_sleep(self, sleep):
         """Set new target sleep mode."""
         self._sleep = sleep.lower()
-        await self.async_send_cmd(True)
+        if not self._hvac_mode.lower() == HVAC_MODE_OFF:
+            await self.async_send_cmd(True)
 
     async def async_send_cmd(self, attr_update=False):
         if attr_update:
@@ -843,66 +842,38 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
              for attribute in ATTRIBUTES_IRHVAC}
         )
 
-    @property
-    def min_temp(self):
-        """Return the minimum temperature."""
-        if self._min_temp:
-            return self._min_temp
-
-        # get default temp from super class
-        return super().min_temp
-
-    @property
-    def max_temp(self):
-        """Return the maximum temperature."""
-        if self._max_temp:
-            return self._max_temp
-
-        # Get default temp from super class
-        return super().max_temp
-
     async def _async_temperature_sensor_changed(self, entity_id, old_state, new_state):
         """Handle temperature changes."""
         if new_state is None:
             return
-
         self._async_update_temperature(new_state)
         await self.async_update_ha_state()
 
     @callback
     def _async_update_temperature(self, state):
-        """Update thermostat with latest state from sensor."""
+        """Update thermostat with latest state from temperature sensor."""
         try:
-            self._current_temperature = float(state.state)
+            if state.state != STATE_UNKNOWN:
+                self._current_temperature = float(state.state)
         except ValueError as ex:
-            _LOGGER.debug("Unable to update from sensor: %s", ex)
+            _LOGGER.debug("Unable to update from temperature sensor: %s", ex)
 
     async def _async_humidity_sensor_changed(self, entity_id, old_state, new_state):
         """Handle humidity changes."""
         if new_state is None:
             return
-
         self._async_update_humidity(new_state)
         await self.async_update_ha_state()
 
     @callback
     def _async_update_humidity(self, state):
-        """Update thermostat with latest state from sensor."""
+        """Update thermostat with latest state from humidity sensor."""
         try:
-            self._current_humidity = float(state.state)
+            if state.state != STATE_UNKNOWN:
+                self._current_humidity = float(state.state)
         except ValueError as ex:
-            _LOGGER.debug("Unable to update from sensor: %s", ex)
+            _LOGGER.debug("Unable to update from humidity sensor: %s", ex)
             
-    @property
-    def _is_device_active(self):
-        """If the toggleable device is currently active."""
-        return self.power_mode == STATE_ON
-
-    @property
-    def supported_features(self):
-        """Return the list of supported features."""
-        return self._support_flags
-
     async def async_set_preset_mode(self, preset_mode):
         """Set new preset mode.
 
@@ -920,14 +891,6 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
 
     def send_ir(self):
         """Send the payload to tasmota mqtt topic."""
-        fan_speed = self.fan_mode
-        # tweak for some ELECTRA_AC devices
-        if HVAC_FAN_MAX_HIGH in self._fan_list and HVAC_FAN_AUTO_MAX in self._fan_list:
-            if self.fan_mode == FAN_HIGH:
-                fan_speed = HVAC_FAN_MAX
-            if self.fan_mode == HVAC_FAN_MAX:
-                fan_speed = HVAC_FAN_AUTO
-
         # Set the swing mode - default off
         swing_h = STATE_OFF
         swing_v = STATE_OFF
@@ -946,16 +909,13 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
             "Mode": self._hvac_mode,
             "Celsius": self._celsius,
             "Temp": self._target_temp,
-            "FanSpeed": fan_speed,
+            "FanSpeed": self.fan_mode,
             "SwingV": swing_v,
             "SwingH": swing_h,
             "Quiet": self._quiet,
             "Turbo": self._turbo,
             "Econo": self._econo,
-            "Light": self._light,
-            "Filter": self._filters,
             "Clean": self._clean,
-            "Beep": self._beep,
             "Sleep": self._sleep
         }
         payload = (json.dumps(payload_data))
