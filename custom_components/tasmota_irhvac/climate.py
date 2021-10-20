@@ -7,34 +7,23 @@ import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
 
 from homeassistant.components import mqtt
-from homeassistant.components.climate import PLATFORM_SCHEMA
-try:
-    from homeassistant.components.climate import ClimateEntity
-except ImportError:
-    from homeassistant.components.binary_sensor import ClimateDevice as ClimateEntity
+from homeassistant.components.climate import ClimateEntity, PLATFORM_SCHEMA
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_state_change
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from homeassistant.components.climate.const import (
-    FAN_AUTO,
-    FAN_DIFFUSE,
-    FAN_FOCUS,
-    FAN_HIGH,
-    FAN_LOW,
-    FAN_MEDIUM,
-    FAN_MIDDLE,
-    FAN_OFF,
-    FAN_ON,
-    HVAC_MODE_DRY,
-    ATTR_PRESET_MODE,
     HVAC_MODE_COOL,
     HVAC_MODE_HEAT,
+    HVAC_MODE_DRY,
+    HVAC_MODE_FAN_ONLY,
+    HVAC_MODE_AUTO,
     HVAC_MODE_OFF,
     CURRENT_HVAC_HEAT,
     CURRENT_HVAC_COOL,
     CURRENT_HVAC_DRY,
     CURRENT_HVAC_FAN,
+    ATTR_PRESET_MODE,
     PRESET_AWAY,
     PRESET_NONE,
     SUPPORT_FAN_MODE,
@@ -51,7 +40,6 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_TEMPERATURE,
     CONF_NAME,
-    EVENT_HOMEASSISTANT_START,
     PRECISION_HALVES,
     PRECISION_TENTHS,
     PRECISION_WHOLE,
@@ -675,8 +663,6 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
             return CURRENT_HVAC_DRY
         elif self._hvac_mode == HVAC_MODE_FAN_ONLY:
             return CURRENT_HVAC_FAN
-        elif self._hvac_mode == HVAC_MODE_AUTO:
-            return CURRENT_HVAC_AUTO
         return self._hvac_mode
 
     @property
@@ -761,7 +747,7 @@ class TasmotaIrhvac(ClimateEntity, RestoreEntity):
             return
         if self._precision == PRECISION_WHOLE:
             self._target_temp = round(temperature)
-        elif self._precision == PRECISION_HALF:
+        elif self._precision == PRECISION_HALVES:
             self._target_temp = round(temperature * 2) / 2
         else: # default to 1 decimal place
             self._target_temp = round(temperature, 1)
