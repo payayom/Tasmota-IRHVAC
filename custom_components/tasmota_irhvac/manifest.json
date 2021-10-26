@@ -1,6 +1,6 @@
 {
-  "domain": "tasmota_irhvac",
-  "name": "Tasmota Irhvac",
+  "domain": "irhvac",
+  "name": "Tasmota IRHVAC",
   "version": "2021.5.30",
   "documentation": "https://github.com/hristo-atanasov/Tasmota-IRHVAC",
   "issue_tracker": "https://github.com/hristo-atanasov/Tasmota-IRHVAC/issues",
