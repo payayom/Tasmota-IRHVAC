@@ -806,11 +806,11 @@ class IRhvac(ClimateEntity, RestoreEntity):
         payload_data = {
             "Vendor": self._vendor,
             "Model": self._model,
-            "Power": self.power_mode,
+            "Power": self._power_mode,
             "Mode": self._hvac_mode,
             "Celsius": self._celsius,
             "Temp": self._target_temp,
-            "FanSpeed": self.fan_mode,
+            "FanSpeed": self._fan_mode,
             "SwingV": swing_v,
             "SwingH": swing_h,
             "Quiet": self._quiet,
