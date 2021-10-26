@@ -1,15 +1,15 @@
 {
   "domain": "irhvac",
   "name": "Tasmota IRHVAC",
-  "version": "2021.5.30",
-  "documentation": "https://github.com/hristo-atanasov/Tasmota-IRHVAC",
-  "issue_tracker": "https://github.com/hristo-atanasov/Tasmota-IRHVAC/issues",
+  "version": "2021.10.26",
+  "documentation": "https://github.com/payayom/Tasmota-IRHVAC",
+  "issue_tracker": "https://github.com/payayom/Tasmota-IRHVAC/issues",
   "requirements": [],
   "dependencies": [
     "mqtt",
     "sensor"
   ],
   "codeowners": [
-    "@hristo-atanasov"
+    "@hristo-atanasov (original code)"
   ]
 }
