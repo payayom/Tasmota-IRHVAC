@@ -305,7 +305,14 @@ class IRhvac(ClimateEntity, RestoreEntity):
         if self._swing_list:
             self._support_flags = self.support_flags | SUPPORT_SWING_MODE
             self._swing_mode = config[CONF_INITIAL_SWING_MODE]
-            
+        
+        self._sub_state = None
+        self._state_attrs = {}
+        self._state_attrs.update(
+            {attribute: getattr(self, '_' + attribute)
+             for attribute in ATTRIBUTES_IRHVAC}
+        )
+        
         self._temp_lock = asyncio.Lock()
               
     async def async_added_to_hass(self):
