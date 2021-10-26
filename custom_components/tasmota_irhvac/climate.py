@@ -13,27 +13,25 @@ from homeassistant.helpers.event import async_track_state_change
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from homeassistant.components.climate.const import (
-    HVAC_MODE_COOL,
+    HVAC_MODE_OFF,
     HVAC_MODE_HEAT,
+    HVAC_MODE_COOL,
     HVAC_MODE_DRY,
     HVAC_MODE_FAN_ONLY,
     HVAC_MODE_AUTO,
-    HVAC_MODE_OFF,
+    CURRENT_HVAC_OFF,
     CURRENT_HVAC_HEAT,
     CURRENT_HVAC_COOL,
     CURRENT_HVAC_DRY,
     CURRENT_HVAC_FAN,
-    ATTR_PRESET_MODE,
-    PRESET_AWAY,
-    PRESET_NONE,
+    CURRENT_HVAC_IDLE,
     SUPPORT_FAN_MODE,
     SUPPORT_SWING_MODE,
-    SUPPORT_PRESET_MODE,
     SUPPORT_TARGET_TEMPERATURE,
     SWING_BOTH,
     SWING_HORIZONTAL,
-    SWING_OFF,
-    SWING_VERTICAL
+    SWING_VERTICAL,
+    SWING_OFF
 )
 
 from homeassistant.const import (
@@ -48,30 +46,18 @@ from homeassistant.const import (
     STATE_UNKNOWN
 )
 
-from .const import (
-    ATTR_VALUE,
-    ATTR_ECONO,
-    ATTR_TURBO,
-    ATTR_QUIET,
-    ATTR_LIGHT,
-    ATTR_FILTERS,
-    ATTR_CLEAN,
-    ATTR_BEEP,
-    ATTR_SLEEP,
-    ATTRIBUTES_IRHVAC,
-    STATE_AUTO,
-    STATE_COOL,
-    STATE_DRY,
-    STATE_FAN_ONLY,
-    STATE_HEAT,
-    HVAC_FAN_AUTO,
-    HVAC_FAN_MIN,
-    HVAC_FAN_MEDIUM,
-    HVAC_FAN_MAX,
-    HVAC_MODE_AUTO_FAN,
-    HVAC_MODE_FAN_AUTO,
-    HVAC_FAN_MAX_HIGH,
-    HVAC_FAN_AUTO_MAX,
+_LOGGER = logging.getLogger(__name__)
+
+# Custom constants
+
+# Some devices have "auto" and "fan_only" changed
+HVAC_MODE_AUTO_FAN = "auto_fan_only"
+
+# Some devicec have "fan_only" and "auto" changed
+HVAC_MODE_FAN_AUTO = "fan_only_auto"
+
+# HVAC mode list with 2 additional modes above
+HVAC_MODES = [
     HVAC_MODE_OFF,
     HVAC_MODE_HEAT,
     HVAC_MODE_COOL,
@@ -79,89 +65,134 @@ from .const import (
     HVAC_MODE_AUTO,
     HVAC_MODE_DRY,
     HVAC_MODE_FAN_ONLY,
-    HVAC_MODES,
-    FAN_MODES,
-    SWING_MODES,
-    CONF_UNIQUE_ID,
-    CONF_EXCLUSIVE_GROUP_VENDOR,
-    CONF_VENDOR,
-    CONF_PROTOCOL,
-    CONF_COMMAND_TOPIC,
-    CONF_STATE_TOPIC,
-    CONF_TEMP_SENSOR,
-    CONF_HUM_SENSOR,
-    CONF_MIN_TEMP,
-    CONF_MAX_TEMP,
-    CONF_TARGET_TEMP,
-    CONF_INITIAL_OPERATION_MODE,
-    CONF_INITIAL_FAN_MODE,
-    CONF_INITIAL_SWING_MODE,
-    CONF_AWAY_TEMP,
-    CONF_PRECISION,
-    CONF_MODE_LIST,
-    CONF_FAN_LIST,
-    CONF_SWING_LIST,
-    CONF_QUIET,
-    CONF_TURBO,
-    CONF_ECONO,
-    CONF_MODEL,
-    CONF_CELSIUS,
-    CONF_LIGHT,
-    CONF_FILTER,
-    CONF_CLEAN,
-    CONF_BEEP,
-    CONF_SLEEP,
-    DATA_KEY,
-    DOMAIN,
-    DEFAULT_NAME,
-    DEFAULT_STATE_TOPIC,
-    DEFAULT_COMMAND_TOPIC,
-    DEFAULT_TARGET_TEMP,
-    DEFAULT_MIN_TEMP,
-    DEFAULT_MAX_TEMP,
-    DEFAULT_PRECISION,
-    DEFAULT_AWAY_TEMP,
-    DEFAULT_FAN_LIST,
-    DEFAULT_CONF_QUIET,
-    DEFAULT_CONF_TURBO,
-    DEFAULT_CONF_ECONO,
-    DEFAULT_CONF_MODEL,
-    DEFAULT_CONF_CELSIUS,
-    DEFAULT_CONF_LIGHT,
-    DEFAULT_CONF_FILTER,
-    DEFAULT_CONF_CLEAN,
-    DEFAULT_CONF_BEEP,
-    DEFAULT_CONF_SLEEP,
-    ON_OFF_LIST,
-    SERVICE_ECONO_MODE,
-    SERVICE_TURBO_MODE,
-    SERVICE_QUIET_MODE,
-    SERVICE_LIGHT_MODE,
-    SERVICE_FILTERS_MODE,
-    SERVICE_CLEAN_MODE,
-    SERVICE_BEEP_MODE,
-    SERVICE_SLEEP_MODE,
-)
-
-DEFAULT_MODES_LIST = [
-    HVAC_MODE_COOL,
-    HVAC_MODE_HEAT,
-    HVAC_MODE_DRY,
     HVAC_MODE_AUTO_FAN,
     HVAC_MODE_FAN_AUTO,
 ]
 
+# Fan speeds
+HVAC_FAN_AUTO = "auto"
+HVAC_FAN_MIN = "min"
+HVAC_FAN_MEDIUM = "medium"
+HVAC_FAN_MAX = "max"
+
+# Some devices say max,but it is high, and auto which is max
+HVAC_FAN_MAX_HIGH = "max_high"
+HVAC_FAN_AUTO_MAX = "auto_max"
+
+# Fan speed list
+HVAC_FAN_LIST = [
+    HVAC_FAN_AUTO,
+    HVAC_FAN_MIN,
+    HVAC_FAN_MEDIUM,
+    HVAC_FAN_MAX,
+    HVAC_FAN_MAX_HIGH,
+    HVAC_FAN_AUTO_MAX
+]
+
+# Swing mode list
+HVAC_SWING_LIST = [
+    SWING_BOTH,
+    SWING_HORIZONTAL,
+    SWING_VERTICAL,
+    SWING_OFF,
+]
+
+CONF_UNIQUE_ID = "unique_id"
+
+# Platform specific config entry names
+CONF_EXCLUSIVE_GROUP_VENDOR = "exclusive_group_vendor"
+CONF_VENDOR = "vendor"
+CONF_PROTOCOL = "protocol"  # Soon to be deprecated
+CONF_COMMAND_TOPIC = "command_topic"
+CONF_STATE_TOPIC = "state_topic"
+CONF_TEMP_SENSOR = "temperature_sensor"
+CONF_HUMIDITY_SENSOR = "humidity_sensor"
+CONF_MIN_TEMP = "min_temp"
+CONF_MAX_TEMP = "max_temp"
+CONF_TARGET_TEMP = "target_temp"
+CONF_INITIAL_OPERATION_MODE = "initial_operation_mode"
+CONF_PRECISION = "precision"
+CONF_MODES_LIST = "supported_modes"
+CONF_FAN_LIST = "supported_fan_speeds"
+CONF_SWING_LIST = "supported_swing_list"
+CONF_QUIET = "default_quiet_mode"
+CONF_TURBO = "default_turbo_mode"
+CONF_ECONO = "default_econo_mode"
+CONF_MODEL = "hvac_model"
+CONF_CELSIUS = "celsius_mode"
+CONF_LIGHT = "default_light_mode"
+CONF_FILTER = "default_filter_mode"
+CONF_CLEAN = "default_clean_mode"
+CONF_BEEP = "default_beep_mode"
+CONF_SLEEP = "default_sleep_mode"
+
+# Platform specific default values
+DEFAULT_NAME = "IR Air Conditioner"
+DEFAULT_MIN_TEMP = 20
+DEFAULT_MAX_TEMP = 30
+DEFAULT_TARGET_TEMP = 26
+DEFAULT_INITIAL_OPERATION_MODE = HVAC_MODE_OFF
+DEFAULT_PRECISION = 1
+DEFAULT_CONF_QUIET = "off"
+DEFAULT_CONF_TURBO = "off"
+DEFAULT_CONF_ECONO = "off"
+DEFAULT_CONF_MODEL = "-1"
+DEFAULT_CONF_CELSIUS = "on"
+DEFAULT_CONF_LIGHT = "off"
+DEFAULT_CONF_FILTER = "off"
+DEFAULT_CONF_CLEAN = "off"
+DEFAULT_CONF_BEEP = "off"
+DEFAULT_CONF_SLEEP = "-1"
+
+DEFAULT_MODES_LIST = [
+    HVAC_MODE_OFF,
+    HVAC_MODE_HEAT,
+    HVAC_MODE_COOL,
+    HVAC_MODE_AUTO,
+    HVAC_MODE_DRY,
+    HVAC_MODE_FAN_ONLY
+]
+DEFAULT_FAN_LIST = [HVAC_FAN_AUTO_MAX, HVAC_FAN_MEDIUM, HVAC_FAN_MIN]
 DEFAULT_SWING_LIST = [SWING_OFF, SWING_VERTICAL]
-DEFAULT_INITIAL_OPERATION_MODE = STATE_OFF
 
-_LOGGER = logging.getLogger(__name__)
+# Attributes
+ATTR_NAME = "name"
+ATTR_VALUE = "value"
+ATTR_ECONO = 'econo'
+ATTR_TURBO = 'turbo'
+ATTR_QUIET = 'quiet'
+ATTR_LIGHT = 'light'
+ATTR_FILTERS = 'filters'
+ATTR_CLEAN = 'clean'
+ATTR_BEEP = 'beep'
+ATTR_SLEEP = 'sleep'
 
-SUPPORT_FLAGS = (
-    SUPPORT_TARGET_TEMPERATURE
-    | SUPPORT_FAN_MODE
-    | SUPPORT_SWING_MODE
-    | SUPPORT_PRESET_MODE
-)
+# Service names
+SERVICE_ECONO_MODE = 'set_econo'
+SERVICE_TURBO_MODE = 'set_turbo'
+SERVICE_QUIET_MODE = 'set_quiet'
+SERVICE_LIGHT_MODE = 'set_light'
+SERVICE_FILTERS_MODE = 'set_filters'
+SERVICE_CLEAN_MODE = 'set_clean'
+SERVICE_BEEP_MODE = 'set_beep'
+SERVICE_SLEEP_MODE = 'set_sleep'
+
+# Map attributes to properties of the state object
+ATTRIBUTES_IRHVAC = {
+    ATTR_ECONO: 'econo',
+    ATTR_TURBO: 'turbo',
+    ATTR_QUIET: 'quiet',
+    ATTR_LIGHT: 'light',
+    ATTR_FILTERS: 'filters',
+    ATTR_CLEAN: 'clean',
+    ATTR_BEEP: 'beep',
+    ATTR_SLEEP: 'sleep',
+}
+
+SUPPORT_FLAGS = (SUPPORT_TARGET_TEMPERATURE |SUPPORT_FAN_MODE | SUPPORT_SWING_MODE)
+
+DATA_KEY = 'tasmota_irhvac.climate'
+DOMAIN = 'tasmota_irhvac'
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -169,22 +200,14 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_UNIQUE_ID): cv.string,
         vol.Exclusive(CONF_VENDOR, CONF_EXCLUSIVE_GROUP_VENDOR): cv.string,
         vol.Exclusive(CONF_PROTOCOL, CONF_EXCLUSIVE_GROUP_VENDOR): cv.string,
-        vol.Required(
-            CONF_COMMAND_TOPIC, default=DEFAULT_COMMAND_TOPIC
-        ): mqtt.valid_publish_topic,
-        vol.Optional(
-            CONF_STATE_TOPIC, default=DEFAULT_STATE_TOPIC
-        ): mqtt.valid_subscribe_topic,
+        vol.Required(CONF_COMMAND_TOPIC): mqtt.valid_publish_topic,
+        vol.Required(CONF_STATE_TOPIC): mqtt.valid_subscribe_topic,
         vol.Optional(CONF_TEMP_SENSOR): cv.entity_id,
-        vol.Optional(CONF_HUM_SENSOR): cv.entity_id,
-        vol.Optional(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): vol.Coerce(float),
+        vol.Optional(CONF_HUMIDITY_SENSOR): cv.entity_id,
         vol.Optional(CONF_MIN_TEMP, default=DEFAULT_MIN_TEMP): vol.Coerce(float),
+        vol.Optional(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): vol.Coerce(float),
         vol.Optional(CONF_TARGET_TEMP, default=DEFAULT_TARGET_TEMP): vol.Coerce(float),
-        vol.Optional(CONF_INITIAL_OPERATION_MODE, default=DEFAULT_INITIAL_OPERATION_MODE): vol.In(
-            [STATE_HEAT, STATE_COOL, STATE_AUTO,
-            STATE_DRY, STATE_FAN_ONLY, STATE_OFF]
-        ),
-        vol.Optional(CONF_AWAY_TEMP, default=DEFAULT_AWAY_TEMP): vol.Coerce(float),
+        vol.Optional(CONF_INITIAL_OPERATION_MODE, default=DEFAULT_INITIAL_OPERATION_MODE): vol.In(HVAC_MODES),
         vol.Optional(CONF_PRECISION, default=DEFAULT_PRECISION): vol.In(
             [PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]
         ),
@@ -192,10 +215,10 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             cv.ensure_list, [vol.In(HVAC_MODES)]
         ),
         vol.Optional(CONF_FAN_LIST, default=DEFAULT_FAN_LIST): vol.All(
-            cv.ensure_list, [vol.In(FAN_MODES)]
+            cv.ensure_list, [vol.In(HVAC_FAN_LIST)]
         ),
         vol.Optional(CONF_SWING_LIST, default=DEFAULT_SWING_LIST): vol.All(
-            cv.ensure_list, [vol.In(SWING_MODES)]
+            cv.ensure_list, [vol.In(HVAC_SWING_LIST)]
         ),
         vol.Optional(CONF_QUIET, default=DEFAULT_CONF_QUIET): cv.string,
         vol.Optional(CONF_TURBO, default=DEFAULT_CONF_TURBO): cv.string,
